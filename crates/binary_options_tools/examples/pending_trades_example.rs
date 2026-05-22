@@ -17,6 +17,8 @@
 //! cargo run --example pending_trades
 //! ```
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -137,7 +139,7 @@ async fn example_basic_pending_order() -> PocketResult<()> {
     });
 
     // 6. Call open_pending_order with realistic parameters
-    let client_handle_clone = client_handle.clone();
+    let _client_handle_clone = client_handle.clone();
     let msg_tx_clone = msg_tx.clone();
 
     // Start a task to simulate the server response AFTER a short delay to ensure open_pending_order is called
@@ -253,23 +255,6 @@ async fn example_concurrent_pending_orders() -> PocketResult<()> {
             // Simulate different amounts and assets
             let amount = Decimal::from_f64_retain(50.0 + (i as f64 * 20.0)).unwrap();
             let asset = format!("ASSET_{}", i % 3);
-
-            // Create a pending order response for this request
-            let req_id = Uuid::new_v4();
-            let pending_order = PendingOrder {
-                ticket: req_id,
-                open_type: 1,
-                amount,
-                symbol: asset.clone(),
-                open_time: "2024-01-01 10:00:00".to_string(),
-                open_price: Decimal::from_f64_retain(1.0 + (i as f64 * 0.01)).unwrap(),
-                timeframe: 60,
-                min_payout: 85,
-                command: 0,
-                status: None,
-                date_created: "2024-01-01 10:00:00".to_string(),
-                id: (1000 + i) as u64,
-            };
 
             // Call open_pending_order in a separate task so we can simulate response concurrently
             let handle_clone2 = handle_clone.clone();
@@ -415,7 +400,7 @@ async fn example_integration_with_pocketclient() -> PocketResult<()> {
     let (pending_resp_tx, pending_resp_rx) = kanal::bounded_async::<CommandResponse>(100);
     let (msg_tx, msg_rx) = kanal::bounded_async::<Arc<Message>>(100);
     let (ws_tx, ws_rx) = kanal::bounded_async::<Message>(100);
-    let (runner_tx, runner_rx) = kanal::bounded_async::<RunnerCommand>(10);
+    let (runner_tx, _runner_rx) = kanal::bounded_async::<RunnerCommand>(10);
 
     // 3. Initialize the PendingTradesApiModule
     let mut pending_trades_module = PendingTradesApiModule::new(
@@ -545,10 +530,11 @@ async fn scenario1_mismatched_responses() -> PocketResult<()> {
     let (resp_tx, resp_rx) = kanal::bounded_async::<CommandResponse>(1);
     let call_lock = Arc::new(Mutex::new(()));
 
-    let handle = PendingTradesHandle {
+    let _handle = PendingTradesHandle {
         sender: cmd_tx.clone(),
         receiver: resp_rx.clone(),
         call_lock: call_lock.clone(),
+        response_cache: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let wrong_id1 = Uuid::new_v4();
@@ -560,6 +546,7 @@ async fn scenario1_mismatched_responses() -> PocketResult<()> {
         sender: cmd_tx,
         receiver: resp_rx.clone(),
         call_lock: call_lock.clone(),
+        response_cache: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let result_handle = tokio::spawn(async move {
@@ -626,6 +613,7 @@ async fn scenario2_exceed_retries() -> PocketResult<()> {
         sender: cmd_tx2,
         receiver: resp_rx2,
         call_lock: call_lock2,
+        response_cache: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let result_handle2 = tokio::spawn(async move {
@@ -665,13 +653,14 @@ async fn scenario3_timeout() -> PocketResult<()> {
     println!("\n--- Scenario 3: Server timeout (no response) ---");
 
     let (cmd_tx3, _) = kanal::bounded_async::<Command>(1);
-    let (resp_tx3, resp_rx3) = kanal::bounded_async::<CommandResponse>(1);
+    let (_resp_tx3, resp_rx3) = kanal::bounded_async::<CommandResponse>(1);
     let call_lock3 = Arc::new(Mutex::new(()));
 
     let handle3 = PendingTradesHandle {
         sender: cmd_tx3,
         receiver: resp_rx3,
         call_lock: call_lock3,
+        response_cache: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let result_handle3 = tokio::spawn(async move {

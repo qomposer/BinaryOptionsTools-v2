@@ -105,6 +105,7 @@ pub struct PocketOption {
     client: Client<State>,
     _runner: Arc<tokio::task::JoinHandle<()>>,
     pub config: Config,
+    #[allow(dead_code)]
     pending_trades_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
