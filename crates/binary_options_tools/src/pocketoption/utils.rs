@@ -168,11 +168,14 @@ pub async fn try_connect(
 
     tracing::debug!(target: "PocketConnect", "Connecting to {} with UA: {} and Origin: https://pocketoption.com", host, user_agent);
 
+    let session_cookie = format!("session_token={}", ssid.session_id());
+
     let request = Request::builder()
         .uri(t_url.to_string())
         .header("Host", host)
         .header("User-Agent", user_agent)
         .header("Origin", "https://pocketoption.com")
+        .header("Cookie", session_cookie)
         .header("Upgrade", "websocket")
         .header("Connection", "upgrade")
         .header("Sec-Websocket-Key", generate_key())

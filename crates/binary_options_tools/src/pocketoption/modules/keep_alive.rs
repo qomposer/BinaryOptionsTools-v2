@@ -149,19 +149,31 @@ impl LightweightModule<State> for InitModule {
                             {
                                 if let Some(arr) = value.as_array() {
                                     let event_name = arr.first().and_then(|v| v.as_str());
-                                    if event_name == Some("successauth") {
+                                    if event_name == Some("successauth")
+                                        || (is_binary && event_name.is_none())
+                                    {
                                         trigger_auth = true;
                                     }
                                 }
                             }
-                        } else if is_binary && text.contains("serverName") {
-                            // Binary part of successauth
+                        } else if is_binary {
+                            // Binary part of successauth or updateAssets binary frame
+                            // newer PocketOption protocol signals auth via updateAssets
                             trigger_auth = true;
                         }
 
-                        if trigger_auth {
+                        if trigger_auth && !authenticated {
                             authenticated = true;
                             tracing::debug!(target: "InitModule", "Authentication successful! Triggering data load.");
+
+                            let (uid, secret) = match &self.state.ssid {
+                                crate::pocketoption::ssid::Ssid::Demo(demo) => {
+                                    (demo.uid, demo.session.clone())
+                                }
+                                crate::pocketoption::ssid::Ssid::Real(real) => {
+                                    (real.uid, real.session_raw.clone())
+                                }
+                            };
 
                             // Explicitly request everything needed for a full sync
                             let initialization_messages = vec![
@@ -169,6 +181,10 @@ impl LightweightModule<State> for InitModule {
                                 r#"42["indicator/load"]"#.to_string(),
                                 r#"42["favorite/load"]"#.to_string(),
                                 r#"42["price-alert/load"]"#.to_string(),
+                                format!(
+                                    r#"42["user_init",{{"id":{},"secret":"{}"}}]"#,
+                                    uid, secret
+                                ),
                                 format!(
                                     r#"42["changeSymbol",{{ "asset":"{}","period":60 }}]"#,
                                     self.state.default_symbol
@@ -244,8 +260,18 @@ impl Rule for InitRule {
                                         self.valid.store(false, Ordering::SeqCst);
                                         return true;
                                     }
+                                } else if event_name == "updateAssets" {
+                                    // updateAssets signals auth in newer PocketOption protocol
+                                    let has_placeholder = arr.iter().skip(1).any(|v| {
+                                        v.as_object()
+                                            .is_some_and(|obj| obj.contains_key("_placeholder"))
+                                    });
+                                    if arr.len() == 1 || has_placeholder {
+                                        self.valid.store(true, Ordering::SeqCst);
+                                        return false; // wait for binary frame
+                                    }
+                                    return false;
                                 } else {
-                                    // It's an event, but not successauth.
                                     return false;
                                 }
                             }
