@@ -79,3 +79,5 @@ debug/
 
 # serena
 .serena/
+
+full_output.txt
